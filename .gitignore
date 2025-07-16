@@ -1,0 +1,25 @@
+# Virtual Environment
+venv/
+.venv/
+__pycache__/
+*.py[cod]
+*$py.class
+.history/
+
+# IDE files
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+
+# Logs
+*.log
+
+# Local configuration
+.env
+
+# Distribution / packaging
+dist/
+build/
+*.egg-info/ 
