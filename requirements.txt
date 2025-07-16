@@ -1,6 +1,6 @@
 langgraph>=0.0.33
 pydantic>=2.0
-openai
+langchain-groq
 langchain-core
 langchain
 typing-extensions

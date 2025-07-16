@@ -24,3 +24,10 @@ class Stage(BaseModel):
     final_prompt: Optional[str] = None
     generic_prompt: Optional[str] = None
     inCondition: Optional[str] = None
+
+
+class LLMResponse(BaseModel):
+    """Structured output model for LLM responses"""
+    response: str
+    next_stage: str
+    confidence: Optional[float] = 1.0

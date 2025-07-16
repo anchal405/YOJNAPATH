@@ -4,30 +4,35 @@ import sys
 from typing import Dict, Any, TypedDict, Annotated, Literal, Optional, cast, List, Sequence
 from datetime import datetime
 import operator
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 # Add the parent directory to the Python path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from langgraph.graph import StateGraph, END
 from langchain_core.messages import AIMessage, HumanMessage
-
-from stage_manager import Boto3StageManager
-from tools.kb_tool import kb_tool
-from tools.scheme_tool import scheme_tool
-from models import StageType
-from langgraph_app.tool_executor import ToolExecutor
+from langchain_groq import ChatGroq
+from models import StageType, Stage, NextStage, LLMResponse
 
 # Load stage configuration
 with open("stage_config.json", "r") as f:
     stages_data = json.load(f)
 
-GENERIC_PROMPT = "You are a helpful government scheme assistant for rural citizens."
-stage_manager = Boto3StageManager(
-    generic_prompt=GENERIC_PROMPT,
-    stages_info=json.dumps(stages_data),
-)
+# Create stage objects from configuration
+stages: Dict[str, Stage] = {}
+for stage_data in stages_data:
+    stage = Stage(**stage_data)
+    stages[stage.id] = stage
 
-tool_executor = ToolExecutor(tools=[kb_tool, scheme_tool])
+# Initialize Groq LLM with structured output
+llm = ChatGroq(
+    model="llama-3.3-70b-versatile",
+    temperature=0.7
+)
+structured_llm = llm.with_structured_output(LLMResponse)
 
 # Custom reducer for string values
 def last_value(a: Any, b: Any) -> Any:
@@ -39,190 +44,212 @@ def append_list(a: list, b: list) -> list:
     """Append lists."""
     return a + b
 
-# Define the state schema
+# Define the simplified state schema
 class State(TypedDict, total=False):
-    conversation_id: Annotated[str, last_value]  # Use last_value to handle updates
-    active_stage: Annotated[str, last_value]  # Use last_value to handle updates
-    messages: Annotated[list, append_list]  # Use append_list to handle updates
-    next_stage: Annotated[str, last_value]  # Use last_value to handle updates
-    response: Annotated[Dict[str, Any], last_value]  # Use last_value to handle updates
-    prompt: Annotated[str, last_value]  # Use last_value to handle updates
+    conversation_id: Annotated[str, last_value]
+    current_stage: Annotated[str, last_value]
+    messages: Annotated[List[HumanMessage | AIMessage], append_list]
+    user_input: Annotated[str, last_value]
 
-# Define a function to get the prompt for the current active stage
-def run_stage_node(state: State) -> State:
-    """
-    Gets the prompt for the current active stage and adds it to the state.
-    """
-    conversation_id = state.get("conversation_id", "default")
-    active_stage = state.get("active_stage")
-    
-    # If active_stage is not in state, get the start stage
-    if not active_stage:
-        start_stage = stage_manager.get_start_stage()
-        active_stage = start_stage.id
-        state["active_stage"] = active_stage
-    
-    # Get the prompt for the active stage
-    prompt = stage_manager.get_chain_for_current_active_stage(conversation_id)
-    
-    # Update the state with the prompt
-    return {
-        **state,
-        "prompt": prompt,
-        "active_stage": active_stage
-    }
+def get_start_stage() -> Stage:
+    """Get the start stage from configuration"""
+    for stage in stages.values():
+        if stage.type == StageType.START:
+            return stage
+    raise ValueError("No start stage found in configuration")
 
-# Define a function to process the LLM response and extract the next stage
-def process_llm_response(state: State) -> State:
-    """
-    Process the LLM response to extract the next stage and update the state.
-    This function would parse the structured output from the LLM.
-    """
-    # In a real implementation, you would parse the structured output
-    # For now, we'll assume the LLM response contains a next_stage field
-    response = state.get("response", {})
-    next_stage = response.get("next_stage") if isinstance(response, dict) else None
+def build_stage_prompt(stage: Stage, messages: List[HumanMessage | AIMessage]) -> str:
+    """Build the prompt for the current stage including context"""
     
-    # If next_stage is provided in the response, update the state
-    if next_stage:
-        # Update the active stage in the stage manager
-        conversation_id = state.get("conversation_id", "default")
-        stage_manager.set_active_stage(conversation_id, next_stage)
+    # Get conversation history (last 3 exchanges)
+    recent_messages = messages[-6:] if len(messages) > 6 else messages
+    conversation_context = ""
+    
+    if recent_messages:
+        conversation_context = "\n\nRecent conversation:\n"
+        for msg in recent_messages:
+            if isinstance(msg, HumanMessage):
+                conversation_context += f"User: {msg.content}\n"
+            elif isinstance(msg, AIMessage):
+                conversation_context += f"Assistant: {msg.content}\n"
+    
+    # Get possible next stages for context
+    next_stages_info = ""
+    if stage.nextStages:
+        next_stages_info = "\n\nPossible next stages:\n"
+        for next_stage in stage.nextStages:
+            next_stage_obj = stages.get(next_stage.nextStageId)
+            if next_stage_obj:
+                next_stages_info += f"- {next_stage.nextStageId} ({next_stage_obj.name}): {next_stage.condition}\n"
+    
+    prompt = f"""You are YojnaPath, a helpful government scheme assistant for rural citizens.
+
+Current Stage: {stage.name}
+Stage Description: {stage.prompt}
+
+{conversation_context}
+
+{next_stages_info}
+
+Instructions:
+1. Respond helpfully to the user's message
+2. Choose the most appropriate next stage based on the user's intent
+3. If user wants to end conversation or says goodbye, choose 'farewell'
+4. If user has scheme-related doubts, choose 'scheme_doubt_solving'
+5. If user needs application help, choose 'kb_tool_call'
+
+Respond with:
+- response: Your helpful response to the user
+- next_stage: The ID of the next appropriate stage
+- confidence: Your confidence in the stage choice (0.0 to 1.0)"""
+
+    return prompt
+
+def process_stage(state: State) -> State:
+    """Process the current stage and generate LLM response with next stage"""
+    
+    current_stage_id = state.get("current_stage")
+    if not current_stage_id:
+        # Start with the initial stage
+        start_stage = get_start_stage()
+        current_stage_id = start_stage.id
+        state["current_stage"] = current_stage_id
+    
+    current_stage = stages[current_stage_id]
+    messages = state.get("messages", [])
+    user_input = state.get("user_input", "")
+    
+    # Add user input to messages if provided
+    if user_input:
+        messages.append(HumanMessage(content=user_input))
+    
+    # For END stages, don't call LLM, just return a final message
+    if current_stage.type == StageType.END:
+        final_message = current_stage.prompt or "Thank you for using YojnaPath. Have a great day!"
+        messages.append(AIMessage(content=final_message))
+        return {
+            **state,
+            "messages": messages,
+            "current_stage": current_stage_id,
+            "user_input": ""
+        }
+    
+    # Build stage-specific prompt
+    prompt = build_stage_prompt(current_stage, messages)
+    
+    # Get structured response from LLM
+    try:
+        response = structured_llm.invoke(prompt)
+        
+        # Ensure we have an LLMResponse object
+        if isinstance(response, dict):
+            llm_response = LLMResponse(**response)
+        else:
+            llm_response = response
+        
+        # Add AI response to messages
+        messages.append(AIMessage(content=llm_response.response))
+        
+        # Determine next stage
+        next_stage_id = llm_response.next_stage
+        
+        # Validate next stage is allowed from current stage
+        if current_stage.nextStages:
+            allowed_stages = [ns.nextStageId for ns in current_stage.nextStages]
+            if next_stage_id not in allowed_stages:
+                print(f"⚠️  Invalid stage transition: {current_stage_id} -> {next_stage_id}")
+                print(f"Allowed stages: {allowed_stages}")
+                # Default to first allowed stage if invalid
+                next_stage_id = allowed_stages[0] if allowed_stages else "farewell"
+        else:
+            # If no next stages defined, go to farewell
+            next_stage_id = "farewell"
+        
+        # Make sure the next stage exists
+        if next_stage_id not in stages:
+            print(f"⚠️  Stage {next_stage_id} not found, defaulting to farewell")
+            next_stage_id = "farewell"
+        
+        print(f"🔄 Stage transition: {current_stage_id} -> {next_stage_id}")
         
         return {
             **state,
-            "next_stage": next_stage
+            "messages": messages,
+            "current_stage": next_stage_id,
+            "user_input": ""  # Clear user input after processing
         }
-    
-    # If no next_stage is provided, keep the current active stage
-    return state
+        
+    except Exception as e:
+        print(f"Error in LLM call: {e}")
+        # Fallback response
+        messages.append(AIMessage(content="I apologize, but I'm having trouble processing your request. Could you please try again?"))
+        return {
+            **state,
+            "messages": messages,
+            "current_stage": "farewell",  # Go to farewell on error
+            "user_input": ""
+        }
 
-# Define a function to route to the next node based on the next_stage in state
-def route_next_stage(state: State) -> str:
-    """
-    Route to the next node based on the next_stage in state.
-    """
-    # Get the next stage from state
-    next_stage = state.get("next_stage")
+def should_continue(state: State) -> str:
+    """Determine if conversation should continue or end"""
+    current_stage_id = state.get("current_stage")
+    user_input = state.get("user_input", "")
     
-    # If next_stage is not provided, get the current active stage
-    if not next_stage:
-        conversation_id = state.get("conversation_id", "default")
-        active_stage = stage_manager.get_active_stage(conversation_id)
-        if active_stage and active_stage.type == StageType.END:
+    print(f"🎯 Current stage: {current_stage_id}, User input: '{user_input}'")
+    
+    if current_stage_id:
+        stage = stages.get(current_stage_id)
+        if stage and stage.type == StageType.END:
+            print("🏁 Ending conversation - reached END stage")
             return END
-        return active_stage.id if active_stage else stage_manager.get_start_stage().id
     
-    # Check if the next stage is an end stage
-    next_stage_obj = stage_manager.stage_id_2_stage.get(next_stage)
-    if next_stage_obj and next_stage_obj.type == StageType.END:
+    # If there's no user input, also end (to prevent infinite loops)
+    if not user_input.strip():
+        print("🏁 Ending conversation - no user input")
         return END
-    
-    # Return the next stage ID for routing
-    return next_stage
-
-# Define a function for the stage mover tool
-def stage_mover_tool(state: State, next_stage_name: str) -> State:
-    """
-    Tool for moving to the next stage.
-    """
-    # Find the stage by name
-    stage = stage_manager.find_stage_by_name(next_stage_name)
-    
-    if stage:
-        conversation_id = state.get("conversation_id", "default")
-        stage_manager.set_active_stage(conversation_id, stage.id)
         
-        return {
-            **state,
-            "active_stage": stage.id,
-            "next_stage": stage.id
-        }
-    
-    # If stage not found, return the current state
-    return state
+    print("➡️  Continuing conversation")
+    return "continue"
 
-# Build the graph
 def build_yojnapath_graph():
-    """
-    Build the LangGraph for YojnaPath.
-    """
-    # Create a new graph
+    """Build a simplified LangGraph for conversational flow"""
+    
+    # Create the graph
     builder = StateGraph(State)
     
-    # Add nodes for each stage
-    for stage in stage_manager.stage_id_2_stage.values():
-        builder.add_node(stage.id, run_stage_node)
+    # Add a single conversation node
+    builder.add_node("conversation", process_stage)
     
-    # Add a node for processing LLM response
-    builder.add_node("process_llm_response", process_llm_response)
+    # Set entry point
+    builder.set_entry_point("conversation")
     
-    # Set the entry point to the start stage
-    builder.set_entry_point(stage_manager.get_start_stage().id)
-    
-    # Add edges between stages based on the stage configuration
-    for stage in stage_manager.stage_id_2_stage.values():
-        if stage.type == StageType.END:
-            continue
-        
-        # Add edge from stage to process_llm_response
-        builder.add_edge(stage.id, "process_llm_response")
-        
-        # Add conditional edge from process_llm_response to next stages
-        if stage.nextStages:
-            for next_stage in stage.nextStages:
-                builder.add_edge("process_llm_response", next_stage.nextStageId)
-    
-    # Set the finish point
-    builder.add_edge("process_llm_response", END)
-    
-    # Add conditional edge from process_llm_response to determine next stage
+    # Add conditional edges
     builder.add_conditional_edges(
-        source="process_llm_response",
-        path=route_next_stage
+        source="conversation",
+        path=should_continue,
+        path_map={
+            "continue": "conversation",
+            END: END
+        }
     )
     
-    # Compile and return the graph
+    # Compile the graph
     return builder.compile()
 
-# Function to initialize the state
-def init_state(conversation_id: str = "default") -> State:
-    """
-    Initialize the state for a new conversation.
-    """
-    start_stage = stage_manager.get_start_stage()
-    stage_manager.set_active_stage(conversation_id, start_stage.id)
+def init_conversation(conversation_id: str = "default") -> State:
+    """Initialize a new conversation"""
+    start_stage = get_start_stage()
     
     return {
         "conversation_id": conversation_id,
-        "active_stage": start_stage.id,
+        "current_stage": start_stage.id,
         "messages": [],
-        "next_stage": "",
-        "response": {}
+        "user_input": ""
     }
 
-# Function to add a user message to the state
-def add_user_message(state: State, message: str) -> State:
-    """
-    Add a user message to the state.
-    """
-    messages = state.get("messages", [])
-    messages.append(HumanMessage(content=message))
-    
+def add_user_input(state: State, user_input: str) -> State:
+    """Add user input to the state"""
     return {
         **state,
-        "messages": messages
-    }
-
-# Function to add an AI message to the state
-def add_ai_message(state: State, message: str) -> State:
-    """
-    Add an AI message to the state.
-    """
-    messages = state.get("messages", [])
-    messages.append(AIMessage(content=message))
-    
-    return {
-        **state,
-        "messages": messages
+        "user_input": user_input
     }
