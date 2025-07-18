@@ -6,7 +6,7 @@ from typing import cast
 from livekit import agents
 from livekit.agents import AgentSession, Agent, RoomInputOptions
 from livekit.plugins import (
-    azure,
+    google,
     noise_cancellation,
     silero,
 )
@@ -27,8 +27,9 @@ from langgraph_app.graph_builder import (
 
 load_dotenv()
 
-speech_key = os.getenv("AZURE_SPEECH_KEY")
-service_region = os.getenv("AZURE_SPEECH_REGION")
+speech_key = os.getenv("GOOGLE_SPEECH_KEY")
+# No region needed for Google STT/TTS
+
 
 # For generating thread IDs for LangGraph state management
 NAMESPACE = UUID("41010b5d-5447-4df5-baf2-97d69f2e9d06")
@@ -69,11 +70,8 @@ def prewarm_resources():
         raise
 
 async def entrypoint(ctx: agents.JobContext):
-    stt_region = service_region if service_region is not None else ""
-    tts_region = service_region if service_region is not None else ""
-    
-    if not speech_key or not stt_region or not tts_region:
-        raise ValueError("Missing Azure Speech credentials")
+    if not speech_key:
+        raise ValueError("Missing Google Speech credentials")
 
     # Connect and wait for participant
     await ctx.connect()
@@ -99,17 +97,21 @@ async def entrypoint(ctx: agents.JobContext):
             }
         )
 
+        # Get the directory of the current script
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        credentials_path = os.path.join(script_dir, "zynga-backend-5558169672f7.json")
+        
         session = AgentSession(
-            stt=azure.STT(
-                speech_key=speech_key, 
-                speech_region=stt_region, 
-                language="hi-IN"
+            stt=google.STT(
+                languages="hi-IN",
+                credentials_file=credentials_path
             ),
             llm=langgraph_llm,  # Use YojnaPath LangGraph adapter
-            tts=azure.TTS(
-                speech_key=speech_key, 
-                speech_region=tts_region, 
-                voice="hi-IN-SwaraNeural"
+            tts=google.TTS(
+                voice_name="hi-IN-Standard-B",  # Use Standard Hindi voice (more reliable)
+                language="hi-IN",
+                credentials_file=credentials_path,
+                use_streaming=False
             ),
             vad=silero.VAD.load(),
             turn_detection=MultilingualModel(),
@@ -153,8 +155,7 @@ def main():
     
     # Validate environment
     required_env_vars = [
-        "AZURE_SPEECH_KEY",
-        "AZURE_SPEECH_REGION", 
+        "GOOGLE_SPEECH_KEY",
         "GROQ_API_KEY"
     ]
     
