@@ -145,7 +145,9 @@ class YojnaPathWorkerOptions(agents.WorkerOptions):
     def __init__(self):
         super().__init__(
             entrypoint_fnc=entrypoint,
-            prewarm_fnc=lambda proc: prewarm_resources()
+            prewarm_fnc=lambda proc: prewarm_resources(),
+            agent_name="yojna-path-agent"
+
         )
 
 def main():

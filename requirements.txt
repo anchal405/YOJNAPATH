@@ -16,6 +16,11 @@ livekit-plugins-noise-cancellation~=0.2
 # Additional dependencies
 numpy
 
+# OpenTelemetry dependencies for Langfuse tracing
+opentelemetry-api
+opentelemetry-sdk
+opentelemetry-exporter-otlp-proto-http
+
 
 
 
