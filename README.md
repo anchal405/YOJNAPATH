@@ -4,11 +4,11 @@ A clean and simple conversational AI agent built with LangGraph that guides user
 
 ## Features
 
-- 🤖 **Multi-Stage Conversation Flow**: Uses `stage_config.json` to define conversation stages and transitions
-- 🎯 **Intent Detection**: LLM structured output determines next conversation stage
-- 🔄 **Dynamic Stage Routing**: Efficiently moves between stages based on user intent
-- 🌟 **Grok LLM Integration**: Uses Grok API for conversational responses
-- 📊 **LangGraph Implementation**: Clean graph-based conversation management
+-  **Multi-Stage Conversation Flow**: Uses `stage_config.json` to define conversation stages and transitions
+-  **Intent Detection**: LLM structured output determines next conversation stage
+-  **Dynamic Stage Routing**: Efficiently moves between stages based on user intent
+-  **Grok LLM Integration**: Uses Grok API for conversational responses
+-  **LangGraph Implementation**: Clean graph-based conversation management
 
 ## Architecture
 
@@ -170,4 +170,4 @@ Modify the prompt building in `build_stage_prompt()` function in `graph_builder.
 
 ---
 
-Built with ❤️ for rural citizens to access government scheme information easily. 
+Built  for rural citizens to access government scheme information easily. 
