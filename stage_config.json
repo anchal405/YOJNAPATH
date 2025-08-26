@@ -1,0 +1,109 @@
+[
+  {
+    "id": "start_greet",
+    "name": "Greeting Statement",
+    "type": "START",
+    "prompt": "Hello! Welcome to YojnaPath — your personalized government scheme assistant. Would you like to know about a specific scheme or should I recommend schemes based on your profile?",
+    "nextStages": [
+      {
+        "nextStageId": "scheme_doubt_solving",
+        "condition": "User has a specific scheme query"
+      },
+      {
+        "nextStageId": "gather_info",
+        "condition": "User has no scheme in mind"
+      }
+    ]
+  },
+  {
+    "id": "scheme_doubt_solving",
+    "name": "Scheme Doubt Solving",
+    "type": "NORMAL",
+    "prompt": "Sure! Please ask your question about the scheme — eligibility, documents, benefits, or how to apply.",
+    "nextStages": [
+      {
+        "nextStageId": "scheme_doubt_solving",
+        "condition": "User has another doubt or follow-up question"
+      },
+      {
+        "nextStageId": "kb_tool_call",
+        "condition": "User asks how to apply or wants external help"
+      },
+      {
+        "nextStageId": "farewell",
+        "condition": "User says no more questions"
+      }
+    ]
+  },
+  {
+    "id": "gather_info",
+    "name": "Gather Information",
+    "type": "NORMAL",
+    "prompt": "Please share a few details to help me recommend suitable schemes: your name, age, state, income, gender, category (SC/ST/OBC/GEN), occupation, education, area (rural/urban), and whether you are differently-abled.",
+    "nextStages": [
+      {
+        "nextStageId": "gather_info",
+        "condition": "User has not provided all required info"
+      },
+      {
+        "nextStageId": "preference",
+        "condition": "User provides all required info"
+      }
+    ]
+  },
+  {
+    "id": "preference",
+    "name": "Scheme Preference",
+    "type": "NORMAL",
+    "prompt": "Do you have any preferred category for schemes like education, women, housing, agriculture, etc.? If not, I’ll recommend based on your profile.",
+    "nextStages": [
+      {
+        "nextStageId": "recommend_scheme",
+        "condition": "User provides preference or says no preference"
+      }
+    ]
+  },
+  {
+    "id": "recommend_scheme",
+    "name": "Recommend Scheme",
+    "type": "NORMAL",
+    "prompt": "Based on your profile, here are some suitable government schemes: (dynamically fetched from database). Would you like to hear more about any of these?",
+    "nextStages": [
+      {
+        "nextStageId": "farewell",
+        "condition": "User says thank you or wants to end"
+      },
+      {
+        "nextStageId": "scheme_doubt_solving",
+        "condition": "User asks a question about recommended scheme"
+      },
+      {
+        "nextStageId": "kb_tool_call",
+        "condition": "User wants help with applying"
+      },
+      {
+        "nextStageId": "preference",
+        "condition": "User wants more or different recommendations"
+      }
+    ]
+  },
+  {
+    "id": "kb_tool_call",
+    "name": "KB Tool Call",
+    "type": "NORMAL",
+    "prompt": "No problem! You can submit your query here and our team will follow up with the right steps: [Google Form Link].",
+    "nextStages": [
+      {
+        "nextStageId": "farewell",
+        "condition": "After showing form"
+      }
+    ]
+  },
+  {
+    "id": "farewell",
+    "name": "Farewell",
+    "type": "END",
+    "prompt": "Thank you for using YojnaPath. Have a great day! If you need help again, just say 'YojnaPath'.",
+    "nextStages": []
+  }
+]

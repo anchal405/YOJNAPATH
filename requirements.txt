@@ -1,0 +1,26 @@
+# Core dependencies
+pydantic>=2.0
+langchain-groq
+langchain-core
+langchain
+typing-extensions
+python-dotenv
+
+# LiveKit Agents with LangGraph integration
+langchain-community>=0.3.15
+langchain-openai>=0.3.1
+langgraph>=0.2.66
+livekit-agents[deepgram,openai,cartesia,silero,turn-detector]~=1.0
+livekit-plugins-noise-cancellation~=0.2
+
+# Additional dependencies
+numpy
+
+# OpenTelemetry dependencies for Langfuse tracing
+opentelemetry-api
+opentelemetry-sdk
+opentelemetry-exporter-otlp-proto-http
+
+
+
+
