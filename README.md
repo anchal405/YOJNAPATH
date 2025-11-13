@@ -18,6 +18,12 @@ A clean and simple conversational AI agent built with LangGraph that guides user
 -  **Dynamic Stage Routing**: Efficiently moves between stages based on user intent
 -  **Grok LLM Integration**: Uses Grok API for conversational responses
 -  **LangGraph Implementation**: Clean graph-based conversation management
+## System Architecture Diagram
+
+<p align="center">
+  <img src="assets/architecture.png"/>
+</p>
+
 
 ## Architecture
 
