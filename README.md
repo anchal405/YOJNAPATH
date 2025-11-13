@@ -1,4 +1,8 @@
 # YojnaPath - Multi-Stage Conversational Agent
+<p align="center">
+  <img src="assets/Yojanaपथ.png" width="250" />
+</p>
+
 
 A clean and simple conversational AI agent built with LangGraph that guides users through government scheme information using multi-stage conversation flow with LLM structured output for intent detection.
 
