@@ -2,7 +2,7 @@
 
 A clean and simple conversational AI agent built with LangGraph that guides users through government scheme information using multi-stage conversation flow with LLM structured output for intent detection.
 
-## 🎥 Demo Video
+## Demo Video
 
 <video src="https://github.com/user-attachments/assets/034d1564-abcf-45dd-a801-310f800f4112" controls width="600"></video>
 
