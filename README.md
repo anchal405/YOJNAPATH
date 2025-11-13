@@ -1,6 +1,6 @@
 # YojnaPath - Multi-Stage Conversational Agent
 <p align="center">
-  <img src="assets/Yojanaपथ.png" width="250" />
+  <img src="assets/Yojanaपथ.png"/>
 </p>
 
 
